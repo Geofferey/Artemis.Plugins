@@ -121,6 +121,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		..\.github\workflows\artemis-plugins-modules-performance.yml = ..\.github\workflows\artemis-plugins-modules-performance.yml
 		..\.github\workflows\artemis-plugins-modules-processes.yml = ..\.github\workflows\artemis-plugins-modules-processes.yml
 		..\.github\workflows\artemis-plugins-modules-profiles.yml = ..\.github\workflows\artemis-plugins-modules-profiles.yml
+		..\.github\workflows\artemis-plugins-modules-systemevents.yml = ..\.github\workflows\artemis-plugins-modules-systemevents.yml
 		..\.github\workflows\artemis-plugins-modules-testdata.yml = ..\.github\workflows\artemis-plugins-modules-testdata.yml
 		..\.github\workflows\artemis-plugins-modules-time.yml = ..\.github\workflows\artemis-plugins-modules-time.yml
 		..\.github\workflows\artemis-plugins-nodes-general.yml = ..\.github\workflows\artemis-plugins-nodes-general.yml
@@ -129,6 +130,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		..\.github\workflows\artemis-plugins-webapi.yml = ..\.github\workflows\artemis-plugins-webapi.yml
 		..\.github\workflows\artemis-plugins.yml = ..\.github\workflows\artemis-plugins.yml
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Artemis.Plugins.Modules.SystemEvents", "Modules\Artemis.Plugins.Modules.SystemEvents\Artemis.Plugins.Modules.SystemEvents.csproj", "{447F998A-66EE-422D-802B-1DEA8B6ADF1A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -272,6 +275,10 @@ Global
 		{7D3708F8-70B7-40C2-A290-622DB256A22D}.Debug|x64.Build.0 = Debug|Any CPU
 		{7D3708F8-70B7-40C2-A290-622DB256A22D}.Release|x64.ActiveCfg = Release|Any CPU
 		{7D3708F8-70B7-40C2-A290-622DB256A22D}.Release|x64.Build.0 = Release|Any CPU
+		{447F998A-66EE-422D-802B-1DEA8B6ADF1A}.Debug|x64.ActiveCfg = Debug|x64
+		{447F998A-66EE-422D-802B-1DEA8B6ADF1A}.Debug|x64.Build.0 = Debug|x64
+		{447F998A-66EE-422D-802B-1DEA8B6ADF1A}.Release|x64.ActiveCfg = Release|x64
+		{447F998A-66EE-422D-802B-1DEA8B6ADF1A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -312,6 +319,7 @@ Global
 		{A3E1FB7F-838F-49DB-9229-ED65DC4693F0} = {82496F91-3977-44EE-A1B8-B301A8B03E20}
 		{7D3708F8-70B7-40C2-A290-622DB256A22D} = {7AE6F335-202C-45DD-8FE3-1BE3E0EF7F6F}
 		{35281CB6-7C8A-423F-B8B6-F593667B0F8E} = {591844D9-3F22-4D4A-9687-54B05E9C3E2D}
+		{447F998A-66EE-422D-802B-1DEA8B6ADF1A} = {82496F91-3977-44EE-A1B8-B301A8B03E20}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {9B916481-E18C-4776-900C-3E79B636F006}
