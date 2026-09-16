@@ -3,14 +3,15 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:avalonia="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:controls="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Artemis.Plugins.Devices.OpenRGB.Views.OpenRGBConfigurationDialogView">
     <Grid RowDefinitions="Auto,Auto,300,Auto,Auto,*">
         <StackPanel Grid.Row="0" Classes="plugin-introduction">
             <TextBlock TextWrapping="Wrap">
-                Enter absolute paths to the device layout and choose the image layout you wish to test.
+                Configure the OpenRGB SDK servers Artemis connects to.
                 <LineBreak />
-                Please note that currently RGB.NET does not support changing devices on runtime and so any changes below won't be applied until you restart Artemis.
+                Changes are applied when you save. Changing servers or device options reloads all OpenRGB devices.
             </TextBlock>
         </StackPanel>
 
@@ -49,8 +50,8 @@
 
         <TextBlock Grid.Row="3" Classes="card-title">Advanced</TextBlock>
         <Border Grid.Row="4" Classes="card">
-            <Grid RowDefinitions="*,*" ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Row="0" Grid.Column="0">
                     <TextBlock>
                         Force using devices with no direct mode
                     </TextBlock>
@@ -63,6 +64,54 @@
                 </StackPanel>
                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
                     <ToggleSwitch IsChecked="{Binding ForceAddAllDevices}" MinWidth="0" />
+                </StackPanel>
+
+                <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+
+                <StackPanel Grid.Row="2" Grid.Column="0">
+                    <TextBlock>
+                        Rescan devices on wake/unlock
+                    </TextBlock>
+                    <TextBlock Classes="subtitle" TextWrapping="Wrap">
+                        Rescan for OpenRGB devices before Artemis reconnects on unlock or resume.
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Row="2" Grid.Column="1" VerticalAlignment="Center">
+                    <ToggleSwitch IsChecked="{Binding RescanOnResume}" MinWidth="0" />
+                </StackPanel>
+
+                <Border Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+
+                <StackPanel Grid.Row="4" Grid.Column="0">
+                    <TextBlock>
+                        Warm-up period before rescanning
+                    </TextBlock>
+                    <TextBlock Classes="subtitle" TextWrapping="Wrap">
+                        How long to wait after waking up or unlocking before asking OpenRGB to rescan, giving devices time to come back. 0 rescans immediately.
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                    <controls:NumberBox Value="{Binding RescanDelay}"
+                                        IsEnabled="{Binding RescanOnResume}"
+                                        Minimum="0"
+                                        Maximum="600"
+                                        SimpleNumberFormat="F0"
+                                        Width="120" />
+                    <TextBlock VerticalAlignment="Center" TextAlignment="Right" Width="30">sec</TextBlock>
+                </StackPanel>
+
+                <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+
+                <StackPanel Grid.Row="6" Grid.Column="0">
+                    <TextBlock>
+                        Reload when OpenRGB's device list changes
+                    </TextBlock>
+                    <TextBlock Classes="subtitle" TextWrapping="Wrap">
+                        Automatically reloads OpenRGB devices when devices are added or removed.
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Row="6" Grid.Column="1" VerticalAlignment="Center">
+                    <ToggleSwitch IsChecked="{Binding ReloadOnDeviceListChange}" MinWidth="0" />
                 </StackPanel>
             </Grid>
         </Border>
