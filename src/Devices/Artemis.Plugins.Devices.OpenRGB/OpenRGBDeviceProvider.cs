@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Artemis.Core;
 using Artemis.Core.DeviceProviders;
 using Artemis.Core.Services;
@@ -7,28 +7,48 @@ using RGB.NET.Devices.OpenRGB;
 using Serilog;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Timers;
-using OpenRGB.NET;
 using RGBDeviceProvider = RGB.NET.Devices.OpenRGB.OpenRGBDeviceProvider;
+using Timer = System.Timers.Timer;
 
 namespace Artemis.Plugins.Devices.OpenRGB
 {
     [PluginFeature(Name = "OpenRGB Device Provider")]
     public class OpenRGBDeviceProvider : DeviceProvider
     {
+        private static readonly TimeSpan RescanTimeout = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan DeviceListChangeDebounce = TimeSpan.FromMilliseconds(2500);
+        private static readonly TimeSpan ControllerCountTimeout = TimeSpan.FromSeconds(3);
+
         private readonly ILogger _logger;
         private readonly IDeviceService _deviceService;
+        private readonly IPluginManagementService _pluginManagementService;
 
         private readonly PluginSetting<List<OpenRGBServerDefinition>> _deviceDefinitionsSettings;
         private readonly PluginSetting<bool> _forceAddAllDevicesSetting;
+        private readonly PluginSetting<bool> _rescanOnResumeSetting;
+        private readonly PluginSetting<int> _rescanDelaySetting;
+        private readonly PluginSetting<bool> _reloadOnDeviceListChangeSetting;
         private readonly Timer _reconnectTimer;
+        private readonly System.Threading.Timer _deviceListChangeDebounceTimer;
+        private readonly SemaphoreSlim _reloadLock = new(1, 1);
+        private readonly List<OpenRGBServerWatcher> _watchers = new();
+        private readonly Dictionary<string, int> _loadedControllerCounts = new();
 
-        public OpenRGBDeviceProvider(IDeviceService deviceService, PluginSettings settings, ILogger logger)
+        private int _suspendGeneration;
+        private int _rescanInProgress;
+        private volatile bool _serverLost;
+
+        public OpenRGBDeviceProvider(IDeviceService deviceService, IPluginManagementService pluginManagementService, PluginSettings settings, ILogger logger)
         {
             _logger = logger;
             _deviceService = deviceService;
+            _pluginManagementService = pluginManagementService;
             _forceAddAllDevicesSetting = settings.GetSetting("ForceAddAllDevices", false);
+            _rescanOnResumeSetting = settings.GetSetting("RescanOnResume", false);
+            _rescanDelaySetting = settings.GetSetting("RescanDelay", 0);
+            _reloadOnDeviceListChangeSetting = settings.GetSetting("ReloadOnDeviceListChange", false);
             _deviceDefinitionsSettings = settings.GetSetting("DeviceDefinitions", new List<OpenRGBServerDefinition>
             {
                 new()
@@ -40,22 +60,33 @@ namespace Artemis.Plugins.Devices.OpenRGB
             });
             CreateMissingLedsSupported = false;
             RemoveExcessiveLedsSupported = true;
+            SuspendSupported = true;
 
-            _reconnectTimer = new Timer(30 * 1000);
+            _reconnectTimer = new Timer(30 * 1000) {AutoReset = false};
             _reconnectTimer.Elapsed += OnReconnectTimerElapsed;
+            _deviceListChangeDebounceTimer = new System.Threading.Timer(_ => OnDeviceListChangeSettled());
         }
-        
+
         public override RGBDeviceProvider RgbDeviceProvider => RGBDeviceProvider.Instance;
 
         public override void Enable()
         {
             RgbDeviceProvider.Exception += Provider_OnException;
 
+            // Rescanning takes longer than enabling is allowed to take, devices are loaded once it's done
+            if (_rescanOnResumeSetting.Value && _deviceService.SuspendedDeviceProviders.Contains(this))
+            {
+                StartRescanThenReload();
+                return;
+            }
+
+            RgbDeviceProvider.DeviceDefinitions.Clear();
             foreach (OpenRGBServerDefinition def in _deviceDefinitionsSettings.Value)
                 RgbDeviceProvider.DeviceDefinitions.Add(def);
             RgbDeviceProvider.ForceAddAllDevices = _forceAddAllDevicesSetting.Value;
 
             _deviceService.AddDeviceProvider(this);
+            _serverLost = false;
 
             bool anyFailedToConnect = false;
             foreach (OpenRGBServerDefinition deviceDefinition in RgbDeviceProvider.DeviceDefinitions.Where(dd => !dd.Connected))
@@ -63,6 +94,9 @@ namespace Artemis.Plugins.Devices.OpenRGB
                 _logger.Error("OpenRGB server {ip}:{port} failed to connect: {error}", deviceDefinition.Ip, deviceDefinition.Port, deviceDefinition.LastError);
                 anyFailedToConnect = true;
             }
+
+            if (_reloadOnDeviceListChangeSetting.Value)
+                StartWatchers();
 
             if (anyFailedToConnect)
             {
@@ -77,43 +111,244 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
         public override void Disable()
         {
+            _reconnectTimer.Stop();
+            _deviceListChangeDebounceTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            StopWatchers();
+
             _deviceService.RemoveDeviceProvider(this);
             RgbDeviceProvider.Exception -= Provider_OnException;
             RgbDeviceProvider.Dispose();
         }
 
+        public override void Suspend()
+        {
+            Interlocked.Increment(ref _suspendGeneration);
+        }
+
         private void Provider_OnException(object sender, ExceptionEventArgs args) => _logger.Debug(args.Exception, "OpenRGB Exception: {message}", args.Exception.Message);
 
-        private async void OnReconnectTimerElapsed(object sender, ElapsedEventArgs e)
+        #region Rescanning
+
+        private void StartRescanThenReload()
         {
-            //if all device definitions are connected, stop the timer and return.
-            if (RgbDeviceProvider.DeviceDefinitions.All(dd => dd.Connected))
+            if (Interlocked.Exchange(ref _rescanInProgress, 1) == 1)
             {
-                _logger.Verbose("OpenRGB reconnect timer elapsed, but all device definitions connected successfully. Stopping timer.");
-                _reconnectTimer.Stop();
+                _logger.Debug("OpenRGB rescan already in progress");
                 return;
             }
 
-            //otherwise, check if we can connect to any of the not-yet-connected device definitions.
-            bool restart = false;
-            foreach (OpenRGBServerDefinition item in RgbDeviceProvider.DeviceDefinitions.Where(dd => !dd.Connected))
+            int generation = _suspendGeneration;
+            _logger.Information("Resuming, loading OpenRGB devices after OpenRGB rescanned them");
+
+            Thread thread = new(() => RescanThenReload(generation)) {IsBackground = true, Name = "OpenRGB rescan"};
+            thread.Start();
+        }
+
+        private void RescanThenReload(int generation)
+        {
+            try
             {
-                try
+                int delay = Math.Max(0, _rescanDelaySetting.Value);
+                if (delay > 0)
                 {
-                    OpenRgbClient dummyClient = new(item.Ip, item.Port, "Artemis server test");
-                    restart |= true;
-                    dummyClient.Dispose();
+                    _logger.Information("Waiting {Delay} seconds before rescanning OpenRGB devices", delay);
+                    Thread.Sleep(TimeSpan.FromSeconds(delay));
                 }
-                catch { }
+
+                foreach ((string ip, int port) in _deviceDefinitionsSettings.Value.Select(d => (d.Ip, d.Port)).Distinct())
+                {
+                    if (generation != _suspendGeneration)
+                        break;
+
+                    _logger.Information("Rescanning OpenRGB devices of {Ip}:{Port}", ip, port);
+                    OpenRGBRescanResult result = OpenRGBRescanRequester.RequestRescan(ip, port, RescanTimeout, _logger);
+                    _logger.Information("OpenRGB rescan of {Ip}:{Port} finished: {Result}", ip, port, result);
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.Error(e, "OpenRGB rescan failed");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _rescanInProgress, 0);
             }
 
-            //if we can connect using the dummy client, restart the plugin.
-            if (restart)
+            try
             {
-                Disable();
-                await Task.Delay(200);
-                Enable();
+                // A resume during this rescan didn't start its own, so this one still loads the devices
+                SpinWait.SpinUntil(() => !_deviceService.SuspendedDeviceProviders.Contains(this), TimeSpan.FromSeconds(10));
+
+                if (!IsEnabled || _deviceService.SuspendedDeviceProviders.Contains(this))
+                {
+                    _logger.Information("Skipping loading OpenRGB devices after rescan, the device provider is suspended or disabled");
+                    return;
+                }
+
+                ReloadNow("post-resume rescan");
+            }
+            catch (Exception e)
+            {
+                _logger.Error(e, "Failed to load OpenRGB devices after rescan");
             }
         }
+
+        #endregion
+
+        #region Device list changes
+
+        private void StartWatchers()
+        {
+            StopWatchers();
+            foreach (OpenRGBServerDefinition definition in RgbDeviceProvider.DeviceDefinitions.Where(d => d.Connected))
+            {
+                OpenRGBServerWatcher watcher = new(definition.Ip, definition.Port, _logger, OnDeviceListUpdated, OnServerConnectionLost);
+                try
+                {
+                    // Loading devices changes modes which also causes device list updates, only reload when the count changes
+                    int count = OpenRGBProtocol.GetControllerCount(definition.Ip, definition.Port, ControllerCountTimeout);
+                    watcher.Start();
+                    lock (_watchers)
+                    {
+                        _loadedControllerCounts[GetServerKey(definition.Ip, definition.Port)] = count;
+                        _watchers.Add(watcher);
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.Warning(e, "Could not watch OpenRGB server {Ip}:{Port} for device list changes", definition.Ip, definition.Port);
+                    watcher.Dispose();
+                }
+            }
+        }
+
+        private void StopWatchers()
+        {
+            lock (_watchers)
+            {
+                foreach (OpenRGBServerWatcher watcher in _watchers)
+                    watcher.Dispose();
+                _watchers.Clear();
+                _loadedControllerCounts.Clear();
+            }
+        }
+
+        private void OnDeviceListUpdated(OpenRGBServerWatcher watcher)
+        {
+            if (_rescanInProgress == 1)
+                return;
+
+            _logger.Debug("OpenRGB server {Ip}:{Port} reported its device list changed", watcher.Ip, watcher.Port);
+            _deviceListChangeDebounceTimer.Change(DeviceListChangeDebounce, Timeout.InfiniteTimeSpan);
+        }
+
+        private void OnDeviceListChangeSettled()
+        {
+            try
+            {
+                if (_rescanInProgress == 1 || !IsEnabled)
+                    return;
+
+                List<(string Ip, int Port, int LoadedCount)> servers;
+                lock (_watchers)
+                {
+                    servers = _watchers.Select(w => (w.Ip, w.Port, _loadedControllerCounts.GetValueOrDefault(GetServerKey(w.Ip, w.Port), -1))).ToList();
+                }
+
+                foreach ((string ip, int port, int loadedCount) in servers)
+                {
+                    int count = OpenRGBProtocol.GetControllerCount(ip, port, ControllerCountTimeout);
+                    if (count == loadedCount)
+                    {
+                        _logger.Debug("OpenRGB server {Ip}:{Port} device list updated but still has {Count} controllers, not reloading", ip, port, count);
+                        continue;
+                    }
+
+                    _logger.Information("OpenRGB server {Ip}:{Port} went from {LoadedCount} to {Count} controllers", ip, port, loadedCount, count);
+                    ReloadNow("device list changed");
+                    return;
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.Warning(e, "Failed to check OpenRGB device list changes");
+            }
+        }
+
+        private void OnServerConnectionLost(OpenRGBServerWatcher watcher)
+        {
+            _logger.Warning("Lost connection to OpenRGB server {Ip}:{Port}, reconnecting once it's back", watcher.Ip, watcher.Port);
+            _serverLost = true;
+            _reconnectTimer.Start();
+        }
+
+        private static string GetServerKey(string ip, int port) => $"{ip}:{port}";
+
+        #endregion
+
+        #region Reloading
+
+        private void ReloadNow(string reason)
+        {
+            if (!_reloadLock.Wait(0))
+                return;
+
+            try
+            {
+                if (!IsEnabled || _deviceService.SuspendedDeviceProviders.Contains(this))
+                    return;
+
+                _logger.Information("Reloading OpenRGB devices ({Reason})", reason);
+                _pluginManagementService.DisablePluginFeature(this, false);
+                _pluginManagementService.EnablePluginFeature(this, false, true);
+            }
+            catch (Exception e)
+            {
+                _logger.Error(e, "Failed to reload OpenRGB devices ({Reason})", reason);
+            }
+            finally
+            {
+                _reloadLock.Release();
+            }
+        }
+
+        private void OnReconnectTimerElapsed(object sender, ElapsedEventArgs e)
+        {
+            try
+            {
+                List<OpenRGBServerDefinition> disconnected = RgbDeviceProvider.DeviceDefinitions.Where(dd => _serverLost || !dd.Connected).ToList();
+                if (!disconnected.Any())
+                {
+                    _logger.Verbose("OpenRGB reconnect timer elapsed, but all device definitions connected successfully.");
+                    return;
+                }
+
+                bool reachable = false;
+                foreach (OpenRGBServerDefinition definition in disconnected)
+                {
+                    try
+                    {
+                        using System.Net.Sockets.TcpClient client = OpenRGBProtocol.Connect(definition.Ip, definition.Port, TimeSpan.FromSeconds(3));
+                        reachable = true;
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                if (reachable)
+                    ReloadNow("server reachable");
+                else if (IsEnabled)
+                    _reconnectTimer.Start();
+            }
+            catch (Exception exception)
+            {
+                _logger.Error(exception, "OpenRGB reconnect attempt failed");
+                if (IsEnabled)
+                    _reconnectTimer.Start();
+            }
+        }
+
+        #endregion
     }
 }
