@@ -50,7 +50,7 @@
 
         <TextBlock Grid.Row="3" Classes="card-title">Advanced</TextBlock>
         <Border Grid.Row="4" Classes="card">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Row="0" Grid.Column="0">
                     <TextBlock>
                         Force using devices with no direct mode
@@ -125,6 +125,20 @@
                 </StackPanel>
                 <StackPanel Grid.Row="8" Grid.Column="1" VerticalAlignment="Center">
                     <ToggleSwitch IsChecked="{Binding ReloadOnDeviceListChange}" MinWidth="0" />
+                </StackPanel>
+
+                <Border Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+
+                <StackPanel Grid.Row="10" Grid.Column="0">
+                    <TextBlock>
+                        Suspend on sleep and lock
+                    </TextBlock>
+                    <TextBlock Classes="subtitle" TextWrapping="Wrap">
+                        Disconnect from OpenRGB while the system sleeps or is locked.
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Row="10" Grid.Column="1" VerticalAlignment="Center">
+                    <ToggleSwitch IsChecked="{Binding SuspendSupported}" MinWidth="0" />
                 </StackPanel>
             </Grid>
         </Border>

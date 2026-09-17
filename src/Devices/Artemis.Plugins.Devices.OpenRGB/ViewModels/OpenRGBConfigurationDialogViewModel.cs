@@ -22,6 +22,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         private readonly PluginSetting<bool> _rescanOnUnlockSetting;
         private readonly PluginSetting<int> _rescanDelaySetting;
         private readonly PluginSetting<bool> _reloadOnDeviceListChangeSetting;
+        private readonly PluginSetting<bool> _suspendSupportedSetting;
         private readonly IPluginManagementService _pluginManagementService;
         private readonly IWindowService _windowService;
         private readonly ILogger _logger;
@@ -31,6 +32,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         private bool _rescanOnUnlock;
         private double _rescanDelay;
         private bool _reloadOnDeviceListChange;
+        private bool _suspendSupported;
 
         public OpenRGBConfigurationDialogViewModel(Plugin plugin, PluginSettings settings, IPluginManagementService pluginManagementService, IWindowService windowService, ILogger logger) : base(plugin)
         {
@@ -43,6 +45,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _rescanOnUnlockSetting = settings.GetSetting("RescanOnUnlock", false);
             _rescanDelaySetting = settings.GetSetting("RescanDelay", 0);
             _reloadOnDeviceListChangeSetting = settings.GetSetting("ReloadOnDeviceListChange", false);
+            _suspendSupportedSetting = settings.GetSetting("SuspendSupported", false);
 
             // The grid edits definitions in place
             _originalDefinitions = _definitions.Value.Select(d => (d.ClientName, d.Ip, d.Port)).ToList();
@@ -52,6 +55,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             RescanOnUnlock = _rescanOnUnlockSetting.Value;
             RescanDelay = _rescanDelaySetting.Value;
             ReloadOnDeviceListChange = _reloadOnDeviceListChangeSetting.Value;
+            SuspendSupported = _suspendSupportedSetting.Value;
             DeleteDefinition = ReactiveCommand.Create<OpenRGBServerDefinition>(ExecuteDeleteDefinition);
         }
 
@@ -87,6 +91,12 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         {
             get => _reloadOnDeviceListChange;
             set => this.RaiseAndSetIfChanged(ref _reloadOnDeviceListChange, value);
+        }
+
+        public bool SuspendSupported
+        {
+            get => _suspendSupported;
+            set => this.RaiseAndSetIfChanged(ref _suspendSupported, value);
         }
 
         public void AddDefinition()
@@ -131,6 +141,8 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _rescanDelaySetting.Save();
             _reloadOnDeviceListChangeSetting.Value = ReloadOnDeviceListChange;
             _reloadOnDeviceListChangeSetting.Save();
+            _suspendSupportedSetting.Value = SuspendSupported;
+            _suspendSupportedSetting.Save();
 
             if (requiresReload)
             {
@@ -165,6 +177,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _rescanOnUnlockSetting.RejectChanges();
             _rescanDelaySetting.RejectChanges();
             _reloadOnDeviceListChangeSetting.RejectChanges();
+            _suspendSupportedSetting.RejectChanges();
             Close();
         }
     }

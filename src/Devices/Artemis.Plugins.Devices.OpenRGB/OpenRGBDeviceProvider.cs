@@ -33,6 +33,7 @@ namespace Artemis.Plugins.Devices.OpenRGB
         private readonly PluginSetting<bool> _rescanOnUnlockSetting;
         private readonly PluginSetting<int> _rescanDelaySetting;
         private readonly PluginSetting<bool> _reloadOnDeviceListChangeSetting;
+        private readonly PluginSetting<bool> _suspendSupportedSetting;
         private readonly Timer _reconnectTimer;
         private readonly System.Threading.Timer _deviceListChangeDebounceTimer;
         private readonly SemaphoreSlim _reloadLock = new(1, 1);
@@ -62,8 +63,11 @@ namespace Artemis.Plugins.Devices.OpenRGB
                     Port = 6742
                 }
             });
+            _suspendSupportedSetting = settings.GetSetting("SuspendSupported", false);
             CreateMissingLedsSupported = false;
             RemoveExcessiveLedsSupported = true;
+            SuspendSupported = _suspendSupportedSetting.Value;
+            _suspendSupportedSetting.SettingChanged += (_, _) => SuspendSupported = _suspendSupportedSetting.Value;
 
             _reconnectTimer = new Timer(30 * 1000) {AutoReset = false};
             _reconnectTimer.Elapsed += OnReconnectTimerElapsed;
@@ -79,12 +83,14 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
             bool starting = !_enabledBefore;
             _enabledBefore = true;
+            // System events aren't received while suspended, so resuming from a suspension counts as a wake
+            bool resuming = _deviceService.SuspendedDeviceProviders.Contains(this);
 
             // Rescanning takes longer than enabling is allowed to take, devices are loaded once it's done
-            if (_rescanOnResumeSetting.Value && starting)
+            if (_rescanOnResumeSetting.Value && (starting || resuming))
             {
-                _logger.Information("Starting, loading OpenRGB devices after OpenRGB rescanned them");
-                StartRescanThenReload("startup rescan", true);
+                _logger.Information("{Action}, loading OpenRGB devices after OpenRGB rescanned them", starting ? "Starting" : "Resuming");
+                StartRescanThenReload(starting ? "startup rescan" : "post-resume rescan", true);
                 return;
             }
 
