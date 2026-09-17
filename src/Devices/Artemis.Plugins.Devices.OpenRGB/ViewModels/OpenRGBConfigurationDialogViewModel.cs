@@ -89,6 +89,15 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             Definitions.Remove(def);
         }
 
+        public void RescanDevices()
+        {
+            OpenRGBDeviceProvider deviceProvider = Plugin.GetFeature<OpenRGBDeviceProvider>();
+            if (deviceProvider == null)
+                return;
+
+            deviceProvider.RescanDevices();
+        }
+
         public void SaveChanges()
         {
             // Ignore empty definitions
