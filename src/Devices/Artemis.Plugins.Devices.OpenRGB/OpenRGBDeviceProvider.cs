@@ -220,6 +220,8 @@ namespace Artemis.Plugins.Devices.OpenRGB
                     Thread.Sleep(TimeSpan.FromSeconds(delay));
                 }
 
+                DisconnectForRescan();
+
                 foreach ((string ip, int port) in _deviceDefinitionsSettings.Value.Select(d => (d.Ip, d.Port)).Distinct())
                 {
                     _logger.Information("Rescanning OpenRGB devices of {Ip}:{Port}", ip, port);
@@ -249,6 +251,27 @@ namespace Artemis.Plugins.Devices.OpenRGB
             catch (Exception e)
             {
                 _logger.Error(e, "Failed to load OpenRGB devices after rescan");
+            }
+        }
+
+        // OpenRGB can crash when it receives LED updates while rescanning, stop sending until the devices are reloaded
+        private void DisconnectForRescan()
+        {
+            _reloadLock.Wait();
+            try
+            {
+                _logger.Information("Disconnecting from OpenRGB while it rescans");
+                _reconnectTimer.Stop();
+                _deviceListChangeDebounceTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                StopWatchers();
+
+                _deviceService.RemoveDeviceProvider(this);
+                RgbDeviceProvider.Exception -= Provider_OnException;
+                RgbDeviceProvider.Dispose();
+            }
+            finally
+            {
+                _reloadLock.Release();
             }
         }
 
