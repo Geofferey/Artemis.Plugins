@@ -143,7 +143,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="5" ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
+        <Grid Grid.Row="5" ColumnDefinitions="*,Auto" VerticalAlignment="Bottom" Margin="0 15 0 0">
             <StackPanel Orientation="Horizontal">
                 <Button Margin="0 0 5 0" Command="{Binding AddDefinition}">
                     Add server
