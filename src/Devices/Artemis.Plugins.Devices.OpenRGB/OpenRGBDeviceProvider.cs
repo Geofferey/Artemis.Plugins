@@ -30,6 +30,7 @@ namespace Artemis.Plugins.Devices.OpenRGB
         private readonly PluginSetting<List<OpenRGBServerDefinition>> _deviceDefinitionsSettings;
         private readonly PluginSetting<bool> _forceAddAllDevicesSetting;
         private readonly PluginSetting<bool> _rescanOnResumeSetting;
+        private readonly PluginSetting<bool> _rescanOnUnlockSetting;
         private readonly PluginSetting<int> _rescanDelaySetting;
         private readonly PluginSetting<bool> _reloadOnDeviceListChangeSetting;
         private readonly Timer _reconnectTimer;
@@ -49,6 +50,7 @@ namespace Artemis.Plugins.Devices.OpenRGB
             _pluginManagementService = pluginManagementService;
             _forceAddAllDevicesSetting = settings.GetSetting("ForceAddAllDevices", false);
             _rescanOnResumeSetting = settings.GetSetting("RescanOnResume", false);
+            _rescanOnUnlockSetting = settings.GetSetting("RescanOnUnlock", false);
             _rescanDelaySetting = settings.GetSetting("RescanDelay", 0);
             _reloadOnDeviceListChangeSetting = settings.GetSetting("ReloadOnDeviceListChange", false);
             _deviceDefinitionsSettings = settings.GetSetting("DeviceDefinitions", new List<OpenRGBServerDefinition>
@@ -162,19 +164,19 @@ namespace Artemis.Plugins.Devices.OpenRGB
         private void SystemEventsOnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
         {
             if (e.Mode == PowerModes.Resume)
-                RescanAfterSystemEvent("wake");
+                RescanAfterSystemEvent("wake", _rescanOnResumeSetting);
         }
 
         [SupportedOSPlatform("windows")]
         private void SystemEventsOnSessionSwitch(object sender, SessionSwitchEventArgs e)
         {
             if (e.Reason == SessionSwitchReason.SessionUnlock)
-                RescanAfterSystemEvent("unlock");
+                RescanAfterSystemEvent("unlock", _rescanOnUnlockSetting);
         }
 
-        private void RescanAfterSystemEvent(string reason)
+        private void RescanAfterSystemEvent(string reason, PluginSetting<bool> setting)
         {
-            if (!IsEnabled || !_rescanOnResumeSetting.Value)
+            if (!IsEnabled || !setting.Value)
                 return;
 
             _logger.Information("Rescanning OpenRGB devices after {Reason}", reason);

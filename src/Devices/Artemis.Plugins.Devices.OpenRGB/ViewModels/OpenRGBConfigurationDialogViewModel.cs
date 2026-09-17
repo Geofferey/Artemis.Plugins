@@ -19,6 +19,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         private readonly PluginSetting<List<OpenRGBServerDefinition>> _definitions;
         private readonly PluginSetting<bool> _forceAddAllDevicesSetting;
         private readonly PluginSetting<bool> _rescanOnResumeSetting;
+        private readonly PluginSetting<bool> _rescanOnUnlockSetting;
         private readonly PluginSetting<int> _rescanDelaySetting;
         private readonly PluginSetting<bool> _reloadOnDeviceListChangeSetting;
         private readonly IPluginManagementService _pluginManagementService;
@@ -27,6 +28,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         private readonly List<(string ClientName, string Ip, int Port)> _originalDefinitions;
         private bool _forceAddAllDevices;
         private bool _rescanOnResume;
+        private bool _rescanOnUnlock;
         private double _rescanDelay;
         private bool _reloadOnDeviceListChange;
 
@@ -38,6 +40,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _definitions = settings.GetSetting("DeviceDefinitions", new List<OpenRGBServerDefinition>());
             _forceAddAllDevicesSetting = settings.GetSetting("ForceAddAllDevices", false);
             _rescanOnResumeSetting = settings.GetSetting("RescanOnResume", false);
+            _rescanOnUnlockSetting = settings.GetSetting("RescanOnUnlock", false);
             _rescanDelaySetting = settings.GetSetting("RescanDelay", 0);
             _reloadOnDeviceListChangeSetting = settings.GetSetting("ReloadOnDeviceListChange", false);
 
@@ -46,6 +49,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             Definitions = new ObservableCollection<OpenRGBServerDefinition>(_definitions.Value);
             ForceAddAllDevices = _forceAddAllDevicesSetting.Value;
             RescanOnResume = _rescanOnResumeSetting.Value;
+            RescanOnUnlock = _rescanOnUnlockSetting.Value;
             RescanDelay = _rescanDelaySetting.Value;
             ReloadOnDeviceListChange = _reloadOnDeviceListChangeSetting.Value;
             DeleteDefinition = ReactiveCommand.Create<OpenRGBServerDefinition>(ExecuteDeleteDefinition);
@@ -65,6 +69,12 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
         {
             get => _rescanOnResume;
             set => this.RaiseAndSetIfChanged(ref _rescanOnResume, value);
+        }
+
+        public bool RescanOnUnlock
+        {
+            get => _rescanOnUnlock;
+            set => this.RaiseAndSetIfChanged(ref _rescanOnUnlock, value);
         }
 
         public double RescanDelay
@@ -115,6 +125,8 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _forceAddAllDevicesSetting.Save();
             _rescanOnResumeSetting.Value = RescanOnResume;
             _rescanOnResumeSetting.Save();
+            _rescanOnUnlockSetting.Value = RescanOnUnlock;
+            _rescanOnUnlockSetting.Save();
             _rescanDelaySetting.Value = (int) Math.Round(RescanDelay);
             _rescanDelaySetting.Save();
             _reloadOnDeviceListChangeSetting.Value = ReloadOnDeviceListChange;
@@ -150,6 +162,7 @@ namespace Artemis.Plugins.Devices.OpenRGB.ViewModels
             _definitions.RejectChanges();
             _forceAddAllDevicesSetting.RejectChanges();
             _rescanOnResumeSetting.RejectChanges();
+            _rescanOnUnlockSetting.RejectChanges();
             _rescanDelaySetting.RejectChanges();
             _reloadOnDeviceListChangeSetting.RejectChanges();
             Close();
