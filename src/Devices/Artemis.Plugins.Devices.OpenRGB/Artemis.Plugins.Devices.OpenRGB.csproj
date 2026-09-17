@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="RGB.NET.Devices.OpenRGB" Version="3.1.0" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.1" />
     <PackageReference Include="McMaster.NETCore.Plugins" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="System.Text.Json" />

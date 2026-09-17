@@ -7,8 +7,10 @@ using RGB.NET.Devices.OpenRGB;
 using Serilog;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Timers;
+using Microsoft.Win32;
 using RGBDeviceProvider = RGB.NET.Devices.OpenRGB.OpenRGBDeviceProvider;
 using Timer = System.Timers.Timer;
 
@@ -36,7 +38,7 @@ namespace Artemis.Plugins.Devices.OpenRGB
         private readonly List<OpenRGBServerWatcher> _watchers = new();
         private readonly Dictionary<string, int> _loadedControllerCounts = new();
 
-        private int _suspendGeneration;
+        private bool _enabledBefore;
         private int _rescanInProgress;
         private volatile bool _serverLost;
 
@@ -60,7 +62,6 @@ namespace Artemis.Plugins.Devices.OpenRGB
             });
             CreateMissingLedsSupported = false;
             RemoveExcessiveLedsSupported = true;
-            SuspendSupported = true;
 
             _reconnectTimer = new Timer(30 * 1000) {AutoReset = false};
             _reconnectTimer.Elapsed += OnReconnectTimerElapsed;
@@ -72,11 +73,16 @@ namespace Artemis.Plugins.Devices.OpenRGB
         public override void Enable()
         {
             RgbDeviceProvider.Exception += Provider_OnException;
+            SubscribeToSystemEvents();
+
+            bool starting = !_enabledBefore;
+            _enabledBefore = true;
 
             // Rescanning takes longer than enabling is allowed to take, devices are loaded once it's done
-            if (_rescanOnResumeSetting.Value && _deviceService.SuspendedDeviceProviders.Contains(this))
+            if (_rescanOnResumeSetting.Value && starting)
             {
-                StartRescanThenReload();
+                _logger.Information("Starting, loading OpenRGB devices after OpenRGB rescanned them");
+                StartRescanThenReload("startup rescan", true);
                 return;
             }
 
@@ -111,6 +117,7 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
         public override void Disable()
         {
+            UnsubscribeFromSystemEvents();
             _reconnectTimer.Stop();
             _deviceListChangeDebounceTimer.Change(Timeout.Infinite, Timeout.Infinite);
             StopWatchers();
@@ -120,35 +127,93 @@ namespace Artemis.Plugins.Devices.OpenRGB
             RgbDeviceProvider.Dispose();
         }
 
-        public override void Suspend()
+        private void SubscribeToSystemEvents()
         {
-            Interlocked.Increment(ref _suspendGeneration);
+            if (!OperatingSystem.IsWindows())
+                return;
+
+            try
+            {
+                SystemEvents.PowerModeChanged += SystemEventsOnPowerModeChanged;
+                SystemEvents.SessionSwitch += SystemEventsOnSessionSwitch;
+            }
+            catch (Exception e)
+            {
+                _logger.Warning(e, "Could not subscribe to system events, OpenRGB devices won't be rescanned on wake or unlock");
+            }
+        }
+
+        private void UnsubscribeFromSystemEvents()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+
+            try
+            {
+                SystemEvents.PowerModeChanged -= SystemEventsOnPowerModeChanged;
+                SystemEvents.SessionSwitch -= SystemEventsOnSessionSwitch;
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        [SupportedOSPlatform("windows")]
+        private void SystemEventsOnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode == PowerModes.Resume)
+                RescanAfterSystemEvent("wake");
+        }
+
+        [SupportedOSPlatform("windows")]
+        private void SystemEventsOnSessionSwitch(object sender, SessionSwitchEventArgs e)
+        {
+            if (e.Reason == SessionSwitchReason.SessionUnlock)
+                RescanAfterSystemEvent("unlock");
+        }
+
+        private void RescanAfterSystemEvent(string reason)
+        {
+            if (!IsEnabled || !_rescanOnResumeSetting.Value)
+                return;
+
+            _logger.Information("Rescanning OpenRGB devices after {Reason}", reason);
+            StartRescanThenReload($"{reason} rescan", true);
         }
 
         private void Provider_OnException(object sender, ExceptionEventArgs args) => _logger.Debug(args.Exception, "OpenRGB Exception: {message}", args.Exception.Message);
 
         #region Rescanning
 
-        private void StartRescanThenReload()
+        internal void RescanDevices()
         {
-            if (Interlocked.Exchange(ref _rescanInProgress, 1) == 1)
+            if (!IsEnabled)
             {
-                _logger.Debug("OpenRGB rescan already in progress");
+                _logger.Warning("Not rescanning OpenRGB devices, the device provider is disabled");
                 return;
             }
 
-            int generation = _suspendGeneration;
-            _logger.Information("Resuming, loading OpenRGB devices after OpenRGB rescanned them");
+            _logger.Information("Rescanning OpenRGB devices on request");
+            StartRescanThenReload("manual rescan", false);
+        }
 
-            Thread thread = new(() => RescanThenReload(generation)) {IsBackground = true, Name = "OpenRGB rescan"};
+        private void StartRescanThenReload(string reason, bool warmUp)
+        {
+            if (Interlocked.Exchange(ref _rescanInProgress, 1) == 1)
+            {
+                _logger.Information("OpenRGB rescan already in progress");
+                return;
+            }
+
+            Thread thread = new(() => RescanThenReload(reason, warmUp)) {IsBackground = true, Name = "OpenRGB rescan"};
             thread.Start();
         }
 
-        private void RescanThenReload(int generation)
+        private void RescanThenReload(string reason, bool warmUp)
         {
             try
             {
-                int delay = Math.Max(0, _rescanDelaySetting.Value);
+                int delay = warmUp ? Math.Max(0, _rescanDelaySetting.Value) : 0;
                 if (delay > 0)
                 {
                     _logger.Information("Waiting {Delay} seconds before rescanning OpenRGB devices", delay);
@@ -157,12 +222,9 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
                 foreach ((string ip, int port) in _deviceDefinitionsSettings.Value.Select(d => (d.Ip, d.Port)).Distinct())
                 {
-                    if (generation != _suspendGeneration)
-                        break;
-
                     _logger.Information("Rescanning OpenRGB devices of {Ip}:{Port}", ip, port);
                     OpenRGBRescanResult result = OpenRGBRescanRequester.RequestRescan(ip, port, RescanTimeout, _logger);
-                    _logger.Information("OpenRGB rescan of {Ip}:{Port} finished: {Result}", ip, port, result);
+                    _logger.Information("OpenRGB rescan of {Ip}:{Port} finished: {Result}, server reports {Count} controllers", ip, port, result, TryGetControllerCount(ip, port));
                 }
             }
             catch (Exception e)
@@ -176,20 +238,29 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
             try
             {
-                // A resume during this rescan didn't start its own, so this one still loads the devices
-                SpinWait.SpinUntil(() => !_deviceService.SuspendedDeviceProviders.Contains(this), TimeSpan.FromSeconds(10));
-
-                if (!IsEnabled || _deviceService.SuspendedDeviceProviders.Contains(this))
+                if (!IsEnabled)
                 {
-                    _logger.Information("Skipping loading OpenRGB devices after rescan, the device provider is suspended or disabled");
+                    _logger.Information("Skipping loading OpenRGB devices after rescan, the device provider is disabled");
                     return;
                 }
 
-                ReloadNow("post-resume rescan");
+                ReloadNow(reason);
             }
             catch (Exception e)
             {
                 _logger.Error(e, "Failed to load OpenRGB devices after rescan");
+            }
+        }
+
+        private int TryGetControllerCount(string ip, int port)
+        {
+            try
+            {
+                return OpenRGBProtocol.GetControllerCount(ip, port, ControllerCountTimeout);
+            }
+            catch (Exception)
+            {
+                return -1;
             }
         }
 
@@ -295,12 +366,13 @@ namespace Artemis.Plugins.Devices.OpenRGB
 
             try
             {
-                if (!IsEnabled || _deviceService.SuspendedDeviceProviders.Contains(this))
+                if (!IsEnabled)
                     return;
 
                 _logger.Information("Reloading OpenRGB devices ({Reason})", reason);
                 _pluginManagementService.DisablePluginFeature(this, false);
                 _pluginManagementService.EnablePluginFeature(this, false, true);
+                _logger.Information("Reloaded OpenRGB devices ({Reason}), {Count} devices loaded", reason, _deviceService.Devices.Count(d => d.DeviceProvider == this));
             }
             catch (Exception e)
             {

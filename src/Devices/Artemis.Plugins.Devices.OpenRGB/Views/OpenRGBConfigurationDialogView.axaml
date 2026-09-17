@@ -70,10 +70,10 @@
 
                 <StackPanel Grid.Row="2" Grid.Column="0">
                     <TextBlock>
-                        Rescan devices on wake/unlock
+                        Rescan devices on startup, wake and unlock
                     </TextBlock>
                     <TextBlock Classes="subtitle" TextWrapping="Wrap">
-                        Rescan for OpenRGB devices before Artemis reconnects on unlock or resume.
+                        Rescan for OpenRGB devices and reload them on startup, unlock or resume.
                     </TextBlock>
                 </StackPanel>
                 <StackPanel Grid.Row="2" Grid.Column="1" VerticalAlignment="Center">
@@ -117,9 +117,14 @@
         </Border>
 
         <Grid Grid.Row="5" ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
-            <Button Command="{Binding AddDefinition}">
-                Add server
-            </Button>
+            <StackPanel Orientation="Horizontal">
+                <Button Margin="0 0 5 0" Command="{Binding AddDefinition}">
+                    Add server
+                </Button>
+                <Button Command="{Binding RescanDevices}" ToolTip.Tip="Ask OpenRGB to rescan its devices, then reload them in Artemis">
+                    Rescan devices
+                </Button>
+            </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button Classes="accent" Margin="0 0 5 0" Command="{Binding SaveChanges}">
                     Save changes
