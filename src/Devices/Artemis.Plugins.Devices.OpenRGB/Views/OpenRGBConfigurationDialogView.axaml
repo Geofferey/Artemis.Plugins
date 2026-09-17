@@ -50,7 +50,7 @@
 
         <TextBlock Grid.Row="3" Classes="card-title">Advanced</TextBlock>
         <Border Grid.Row="4" Classes="card">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Row="0" Grid.Column="0">
                     <TextBlock>
                         Force using devices with no direct mode
@@ -70,10 +70,10 @@
 
                 <StackPanel Grid.Row="2" Grid.Column="0">
                     <TextBlock>
-                        Rescan devices on startup, wake and unlock
+                        Rescan devices on startup and wake
                     </TextBlock>
                     <TextBlock Classes="subtitle" TextWrapping="Wrap">
-                        Rescan for OpenRGB devices and reload them on startup, unlock or resume.
+                        Rescan for OpenRGB devices and reload them when Artemis starts or the system resumes from sleep.
                     </TextBlock>
                 </StackPanel>
                 <StackPanel Grid.Row="2" Grid.Column="1" VerticalAlignment="Center">
@@ -84,15 +84,28 @@
 
                 <StackPanel Grid.Row="4" Grid.Column="0">
                     <TextBlock>
+                        Rescan devices on unlock
+                    </TextBlock>
+                    <TextBlock Classes="subtitle" TextWrapping="Wrap">
+                        Rescan for OpenRGB devices and reload them when the session is unlocked.
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center">
+                    <ToggleSwitch IsChecked="{Binding RescanOnUnlock}" MinWidth="0" />
+                </StackPanel>
+
+                <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+
+                <StackPanel Grid.Row="6" Grid.Column="0">
+                    <TextBlock>
                         Warm-up period before rescanning
                     </TextBlock>
                     <TextBlock Classes="subtitle" TextWrapping="Wrap">
                         How long to wait after waking up or unlocking before asking OpenRGB to rescan, giving devices time to come back. 0 rescans immediately.
                     </TextBlock>
                 </StackPanel>
-                <StackPanel Grid.Row="4" Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
+                <StackPanel Grid.Row="6" Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
                     <controls:NumberBox Value="{Binding RescanDelay}"
-                                        IsEnabled="{Binding RescanOnResume}"
                                         Minimum="0"
                                         Maximum="600"
                                         SimpleNumberFormat="F0"
@@ -100,9 +113,9 @@
                     <TextBlock VerticalAlignment="Center" TextAlignment="Right" Width="30">sec</TextBlock>
                 </StackPanel>
 
-                <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
+                <Border Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Classes="card-separator" />
 
-                <StackPanel Grid.Row="6" Grid.Column="0">
+                <StackPanel Grid.Row="8" Grid.Column="0">
                     <TextBlock>
                         Reload when OpenRGB's device list changes
                     </TextBlock>
@@ -110,7 +123,7 @@
                         Automatically reloads OpenRGB devices when devices are added or removed.
                     </TextBlock>
                 </StackPanel>
-                <StackPanel Grid.Row="6" Grid.Column="1" VerticalAlignment="Center">
+                <StackPanel Grid.Row="8" Grid.Column="1" VerticalAlignment="Center">
                     <ToggleSwitch IsChecked="{Binding ReloadOnDeviceListChange}" MinWidth="0" />
                 </StackPanel>
             </Grid>
