@@ -16,6 +16,7 @@ namespace Artemis.Plugins.LayerBrushes.Ambilight.ScreenCapture
         private Task? _updateTask;
         private CancellationTokenSource? _cancellationTokenSource;
         private CancellationToken _cancellationToken = CancellationToken.None;
+        private bool _disposed;
 
         public Display Display => _screenCapture.Display;
 
@@ -46,7 +47,17 @@ namespace Artemis.Plugins.LayerBrushes.Ambilight.ScreenCapture
             while (true)
             {
                 _cancellationToken.ThrowIfCancellationRequested();
-                bool success = _screenCapture.CaptureScreen();
+
+                bool success;
+                // Capturing while the screen capture is being disposed crashes the graphics driver
+                lock (_screenCapture)
+                {
+                    if (_disposed)
+                        return;
+
+                    success = _screenCapture.CaptureScreen();
+                }
+
                 Updated?.Invoke(this, new ScreenCaptureUpdatedEventArgs(success));
             }
         }
@@ -99,10 +110,30 @@ namespace Artemis.Plugins.LayerBrushes.Ambilight.ScreenCapture
 
         public void Dispose()
         {
-            _cancellationTokenSource?.Cancel();
-            _updateTask = null;
+            Task? updateTask;
+            lock (_screenCapture)
+            {
+                if (_disposed)
+                    return;
 
-            _screenCapture.Dispose();
+                _disposed = true;
+                _cancellationTokenSource?.Cancel();
+                updateTask = _updateTask;
+                _updateTask = null;
+            }
+
+            // Wait for the update loop to finish its current capture before disposing what it's capturing with
+            try
+            {
+                updateTask?.Wait(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception)
+            {
+                // The loop throws when it's cancelled
+            }
+
+            lock (_screenCapture)
+                _screenCapture.Dispose();
         }
 
         #endregion
