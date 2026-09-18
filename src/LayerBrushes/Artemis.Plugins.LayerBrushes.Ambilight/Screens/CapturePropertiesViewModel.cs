@@ -256,11 +256,26 @@ public class CapturePropertiesViewModel : BrushConfigurationViewModel
         }).DisposeWith(d);
     }
 
+    // Capturing a display can fail, for example when it was removed, don't take Artemis down over it
+    private static CaptureScreenViewModel? CreateCaptureScreen(Display display)
+    {
+        try
+        {
+            return new CaptureScreenViewModel(display);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     private async Task<bool> CreateCaptureScreens()
     {
         CaptureScreens.AddRange(_screenCaptureService.GetGraphicsCards()
             .SelectMany(gg => _screenCaptureService.GetDisplays(gg))
-            .Select(d => new CaptureScreenViewModel(d))
+            .Select(CreateCaptureScreen)
+            .Where(s => s != null)
+            .Select(s => s!)
             .ToList());
 
         if (!CaptureScreens.Any())
